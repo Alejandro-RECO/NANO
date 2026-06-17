@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+.venv/
+venv/
+# Logs reales (no subir), pero si el sample de prueba
+logs/*.txt
+!logs/sample.txt

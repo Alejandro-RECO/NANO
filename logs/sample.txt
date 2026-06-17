@@ -1,0 +1,7 @@
+2026-06-17 09:00:01 INFO  Sistema iniciado correctamente
+2026-06-17 09:00:02 DEBUG Cargando configuracion desde config.yaml
+2026-06-17 09:00:03 INFO  Conexion a base de datos establecida
+2026-06-17 09:00:05 WARN  Uso de memoria al 82%
+2026-06-17 09:00:07 ERROR Fallo al procesar el lote #4521
+2026-06-17 09:00:08 INFO  Reintentando lote #4521
+2026-06-17 09:00:09 INFO  Lote #4521 procesado en reintento
