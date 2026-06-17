@@ -16,11 +16,36 @@ Los colores se aplican según el nivel detectado en cada línea:
 
 ## Requisitos
 
-- Python 3.8+
-- [colorama](https://pypi.org/project/colorama/)
+- Python 3.8+ (único requisito; lo demás se instala solo)
+
+## Correr en cualquier máquina (solo descargar el repo)
+
+El iniciador crea un entorno virtual local (`.venv`), instala las
+dependencias e inicia el visor. **No ensucia el Python global ni necesita
+permisos de administrador.** Solo clona/descarga y ejecuta:
+
+```bash
+git clone <url-del-repo> NANO
+cd NANO
+```
+
+Luego, según tu sistema:
+
+| Sistema           | Comando                          |
+|-------------------|----------------------------------|
+| Windows (CMD / doble-clic) | `iniciar.bat`           |
+| Windows (PowerShell)       | `.\iniciar.ps1`         |
+| Linux / macOS              | `chmod +x iniciar.sh && ./iniciar.sh` |
+
+La primera vez tarda un poco (crea el `.venv` e instala). Las siguientes
+arranca al instante. Cualquier opción del visor se puede pasar al iniciador,
+ej.: `iniciar.bat logs -f ERROR -t`.
+
+### Instalación manual (alternativa)
 
 ```bash
 pip install -r requirements.txt
+python log_viewer.py
 ```
 
 ## Uso

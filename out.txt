@@ -1,0 +1,15 @@
+
+=== NANO - Iniciando visor de logs ===
+
+[OK] Python 3.12.10
+[OK] Dependencias listas.
+[..] Arrancando visor... (Ctrl+C para salir)
+
+============================================================
+  NANO - Visor de logs en tiempo real
+  Carpeta vigilada: C:\Users\revol\OneDrive\Documentos\NET\NANO\logs
+  Ctrl+C para salir  |  'p' pausar
+============================================================
+
+>> Siguiendo: sample.txt
+
