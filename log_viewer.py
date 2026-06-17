@@ -25,42 +25,54 @@ except ImportError:  # No Windows
 just_fix_windows_console()
 
 RESET = "\x1b[0m"
+BLANCO = "\x1b[38;2;255;255;255m"  # mensaje siempre en blanco
 
 
-def _fg(r, g, b):
+def ansi(rgb):
     """Secuencia ANSI de color verdadero (24 bits) para primer plano."""
+    r, g, b = rgb
     return f"\x1b[38;2;{r};{g};{b}m"
 
 
-# Temas de color. Cada uno define el color del nivel (que pinta tambien su
-# mensaje), el color de la fecha y un acento para el banner/menus.
+def ansi_fuerte(rgb, factor=1.6):
+    """Version mas fuerte (mas saturada) del color, misma gama."""
+    media = sum(rgb) / 3
+    fuerte = tuple(
+        max(0, min(255, round(media + (c - media) * factor))) for c in rgb
+    )
+    return ansi(fuerte)
+
+
+# Temas de color. Cada nivel/elemento es un RGB; el color del nivel se usa
+# tambien para el "resto" de la linea, y se deriva una variante mas fuerte
+# para la palabra del nivel.
 TEMAS = {
     "neon": {
         "nombre": "Neon",
-        "ERROR": _fg(255, 16, 80),     # rojo/rosa neon
-        "WARNING": _fg(255, 234, 0),   # amarillo neon
-        "INFO": _fg(57, 255, 20),      # verde neon
-        "DEBUG": _fg(0, 255, 255),     # cian neon
-        "fecha": _fg(255, 255, 255),   # blanco
-        "acento": _fg(255, 0, 255),    # magenta neon
+        "ERROR": (255, 16, 80),     # rojo/rosa neon
+        "WARNING": (255, 234, 0),   # amarillo neon
+        "INFO": (57, 255, 20),      # verde neon
+        "DEBUG": (0, 255, 255),     # cian neon
+        "fecha": (255, 255, 255),   # blanco
+        "acento": (255, 0, 255),    # magenta neon
     },
     "tokyo": {
         "nombre": "Tokyo Night",
-        "ERROR": _fg(247, 118, 142),   # #f7768e
-        "WARNING": _fg(224, 175, 104), # #e0af68
-        "INFO": _fg(158, 206, 106),    # #9ece6a
-        "DEBUG": _fg(125, 207, 255),   # #7dcfff
-        "fecha": _fg(192, 202, 245),   # #c0caf5
-        "acento": _fg(187, 154, 247),  # #bb9af7
+        "ERROR": (247, 118, 142),   # #f7768e
+        "WARNING": (224, 175, 104), # #e0af68
+        "INFO": (158, 206, 106),    # #9ece6a
+        "DEBUG": (125, 207, 255),   # #7dcfff
+        "fecha": (192, 202, 245),   # #c0caf5
+        "acento": (187, 154, 247),  # #bb9af7
     },
     "pastel": {
         "nombre": "Pastel",
-        "ERROR": _fg(255, 153, 162),   # rosa pastel
-        "WARNING": _fg(255, 234, 167), # amarillo pastel
-        "INFO": _fg(178, 235, 190),    # verde pastel
-        "DEBUG": _fg(174, 198, 255),   # azul pastel
-        "fecha": _fg(245, 245, 245),   # blanco suave
-        "acento": _fg(199, 179, 255),  # lila pastel
+        "ERROR": (255, 153, 162),   # rosa pastel
+        "WARNING": (255, 234, 167), # amarillo pastel
+        "INFO": (178, 235, 190),    # verde pastel
+        "DEBUG": (174, 198, 255),   # azul pastel
+        "fecha": (245, 245, 245),   # blanco suave
+        "acento": (199, 179, 255),  # lila pastel
     },
 }
 
@@ -85,13 +97,15 @@ NIVEL_BARRA_RE = re.compile(r"\|\s*([A-Za-z]+)\s*\|")
 POLL_SEG = 0.3  # cada cuanto revisa cambios
 
 
-def detectar_nivel(resto):
+def detectar_nivel(texto):
     """Detecta el nivel canonico (ERROR/WARNING/INFO/DEBUG) o None."""
     # Formato real:  fecha | NIVEL | mensaje | ...
-    m = NIVEL_BARRA_RE.search(resto)
+    m = NIVEL_BARRA_RE.search(texto)
     if m and m.group(1).upper() in ALIAS_NIVEL:
         return ALIAS_NIVEL[m.group(1).upper()]
-    # Formato simple:  fecha NIVEL mensaje
+    # Formato simple:  fecha NIVEL mensaje  (se ignora la fecha inicial)
+    mf = FECHA_RE.match(texto)
+    resto = texto[mf.end():] if mf else texto
     m = re.match(r"\s*([A-Za-z]+)\b", resto)
     if m and m.group(1).upper() in ALIAS_NIVEL:
         return ALIAS_NIVEL[m.group(1).upper()]
@@ -116,38 +130,55 @@ def txt_mas_reciente(carpeta):
 def formatear(linea, args):
     """Aplica filtro y color. Devuelve texto listo o None si se filtra.
 
+    Campos separados por '|':  fecha | NIVEL | mensaje | resto...
     Reglas de color:
-      - La fecha siempre se muestra en blanco.
-      - El nivel y su mensaje se pintan del color del nivel.
-      - Lineas sin nivel reconocido: todo en blanco.
+      - Fecha: color de fecha del tema.
+      - NIVEL: color del nivel pero mas fuerte (misma gama, mas saturado).
+      - Mensaje (3er campo): siempre blanco.
+      - Resto de campos y separadores '|': color del nivel.
+      - Lineas sin nivel reconocido: color de fecha.
     """
     if args.filter and args.filter.upper() not in linea.upper():
         return None
 
     cruda = linea.rstrip("\n")
 
-    m_fecha = FECHA_RE.match(cruda)
-    if m_fecha:
-        fecha = m_fecha.group(1)
-        resto = cruda[m_fecha.end():]
-    else:
-        fecha = ""
-        resto = cruda
+    nivel = detectar_nivel(cruda)
+    rgb = TEMA.get(nivel, TEMA["fecha"])
+    col_nivel = ansi(rgb)                 # resto / separadores
+    col_fuerte = ansi_fuerte(rgb)         # palabra del nivel
+    col_fecha = ansi(TEMA["fecha"])
 
-    nivel = detectar_nivel(resto if fecha else cruda)
-    color = TEMA.get(nivel, TEMA["fecha"])
-
-    partes = []
+    prefijo = ""
     if args.timestamp:
         ahora = datetime.now().strftime("%H:%M:%S")
-        partes.append(f"{TEMA['fecha']}[{ahora}] ")
-    if fecha:
-        partes.append(TEMA["fecha"] + fecha)   # fecha con el color del tema
-        partes.append(color + resto)           # nivel + mensaje con color
-    else:
-        partes.append(color + resto)
-    partes.append(RESET)
-    return "".join(partes)
+        prefijo = f"{col_fecha}[{ahora}] "
+
+    # Formato con campos separados por '|'.
+    if "|" in cruda and nivel is not None:
+        campos = cruda.split("|")
+        piezas = []
+        for i, campo in enumerate(campos):
+            if i == 0:
+                c = col_fecha          # fecha
+            elif i == 1:
+                c = col_fuerte         # nivel (mas fuerte)
+            elif i == 2:
+                c = BLANCO             # mensaje (siempre blanco)
+            else:
+                c = col_nivel          # resto
+            piezas.append(c + campo)
+        # Separadores '|' con el color del nivel.
+        cuerpo = (col_nivel + "|").join(piezas)
+        return prefijo + cuerpo + RESET
+
+    # Formato simple (sin barras): fecha en su color, resto color del nivel.
+    m_fecha = FECHA_RE.match(cruda)
+    if m_fecha:
+        fecha = cruda[: m_fecha.end()]
+        resto = cruda[m_fecha.end():]
+        return prefijo + col_fecha + fecha + col_nivel + resto + RESET
+    return prefijo + col_nivel + cruda + RESET
 
 
 def tecla_pausa():
@@ -167,13 +198,13 @@ def elegir_tema(preseleccion=None):
         TEMA = TEMAS[preseleccion.lower()]
         return
 
-    acento = TEMAS["neon"]["acento"]
+    acento = ansi(TEMAS["neon"]["acento"])
     print(f"\n{acento}=== NANO - Elige un tema de colores ==={RESET}\n")
     for i, clave in enumerate(orden, 1):
         t = TEMAS[clave]
         muestra = (
-            t["INFO"] + "INFO " + t["WARNING"] + "WARNING "
-            + t["ERROR"] + "ERROR " + t["DEBUG"] + "DEBUG" + RESET
+            ansi_fuerte(t["INFO"]) + "INFO " + ansi_fuerte(t["WARNING"]) + "WARNING "
+            + ansi_fuerte(t["ERROR"]) + "ERROR " + ansi_fuerte(t["DEBUG"]) + "DEBUG" + RESET
         )
         marca = " (por defecto)" if clave == "neon" else ""
         print(f"  {i}) {t['nombre']:<12}{marca}   {muestra}")
@@ -187,11 +218,11 @@ def elegir_tema(preseleccion=None):
     mapa = {"1": "neon", "2": "tokyo", "3": "pastel",
             "neon": "neon", "tokyo": "tokyo", "pastel": "pastel"}
     TEMA = TEMAS[mapa.get(sel, "neon")]
-    print(f"{TEMA['acento']}  Tema seleccionado: {TEMA['nombre']}{RESET}")
+    print(f"{ansi(TEMA['acento'])}  Tema seleccionado: {TEMA['nombre']}{RESET}")
 
 
 def banner(carpeta):
-    a = TEMA["acento"]
+    a = ansi(TEMA["acento"])
     print(a + "=" * 60)
     print(a + "  NANO - Visor de logs en tiempo real")
     print(a + f"  Carpeta vigilada: {os.path.abspath(carpeta)}")
@@ -213,7 +244,7 @@ def seguir(args):
             if tecla_pausa():
                 pausado = not pausado
                 estado = "PAUSADO" if pausado else "REANUDADO"
-                print(TEMA["acento"] + f"-- {estado} --" + RESET)
+                print(ansi(TEMA["acento"]) + f"-- {estado} --" + RESET)
 
             if pausado:
                 time.sleep(POLL_SEG)
@@ -228,7 +259,7 @@ def seguir(args):
             # Cambio a un archivo mas reciente.
             if nuevo != actual:
                 actual = nuevo
-                print(TEMA["acento"] + f"\n>> Siguiendo: {os.path.basename(actual)}\n" + RESET)
+                print(ansi(TEMA["acento"]) + f"\n>> Siguiendo: {os.path.basename(actual)}\n" + RESET)
                 # Empieza al final si --tail, sino desde el inicio.
                 pos = os.path.getsize(actual) if args.tail else 0
 
@@ -254,7 +285,7 @@ def seguir(args):
             time.sleep(POLL_SEG)
 
     except KeyboardInterrupt:
-        print(TEMA["acento"] + "\n\nSaliendo. Hasta luego!" + RESET)
+        print(ansi(TEMA["acento"]) + "\n\nSaliendo. Hasta luego!" + RESET)
     finally:
         if salida:
             salida.close()

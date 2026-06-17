@@ -4,10 +4,16 @@ Visor de **logs en consola en tiempo real** con colores. Vigila una carpeta,
 sigue (tail) el archivo `.txt` más reciente y muestra las líneas nuevas a
 medida que otros procesos las escriben — **sin abrir y cerrar el archivo**.
 
-La **fecha se muestra en el color de fecha del tema**; el **nivel y su mensaje**
-se pintan del color del nivel. Formato soportado:
-`DD/MM/YYYY HH:MM:SS | NIVEL | mensaje | ...` (log real) y
-`YYYY-MM-DD HH:MM:SS NIVEL mensaje`.
+Los campos del log se separan con `|`:
+`fecha | NIVEL | mensaje | resto...`. El color se aplica por campo:
+
+- **Fecha**: color de fecha del tema.
+- **NIVEL**: color del nivel pero **más fuerte** (misma gama, más saturado).
+- **Mensaje** (3er campo): **siempre blanco**.
+- **Resto** de campos y los separadores `|`: color del nivel.
+
+Formato soportado: `DD/MM/YYYY HH:MM:SS | NIVEL | mensaje | ...` (log real) y
+`YYYY-MM-DD HH:MM:SS NIVEL mensaje` (simple, sin barras).
 
 Niveles reconocidos: `ERROR`/`CRITICAL`/`FATAL`, `WARNING`/`WARN`, `INFO`,
 `DEBUG`/`TRACE`. Las líneas sin nivel se muestran en el color de fecha.
