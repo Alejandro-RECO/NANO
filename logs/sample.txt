@@ -1,7 +1,8 @@
-2026-06-17 09:00:01 INFO  Sistema iniciado correctamente
-2026-06-17 09:00:02 DEBUG Cargando configuracion desde config.yaml
-2026-06-17 09:00:03 INFO  Conexion a base de datos establecida
-2026-06-17 09:00:05 WARN  Uso de memoria al 82%
-2026-06-17 09:00:07 ERROR Fallo al procesar el lote #4521
-2026-06-17 09:00:08 INFO  Reintentando lote #4521
-2026-06-17 09:00:09 INFO  Lote #4521 procesado en reintento
+16/06/2026 14:09:19 | INFO | Inicio proceso RPA demo | BOT_DEMO | HU00_Inicio | https://ejemplo.local/
+16/06/2026 14:09:19 | DEBUG | Parametros cargados: 80 | BOT_DEMO | HU00_Inicio | https://ejemplo.local/
+16/06/2026 14:09:20 | INFO | Conexion a base de datos establecida | BOT_DEMO | ConfigFunctions | https://ejemplo.local/
+16/06/2026 14:09:34 | WARNING | Uso de memoria al 82% | BOT_DEMO | MonitorRecursos | https://ejemplo.local/
+16/06/2026 14:09:36 | ERROR | Fallo al procesar el lote demo | BOT_DEMO | MainProceso | https://ejemplo.local/
+16/06/2026 14:09:38 | INFO | Reintentando lote demo | BOT_DEMO | MainProceso | https://ejemplo.local/
+16/06/2026 14:09:39 | DEBUG | No se encontraron registros a depurar | BOT_DEMO | DepurarDirectorios | https://ejemplo.local/
+16/06/2026 14:09:40 | INFO | Fin proceso RPA demo | BOT_DEMO | HU00_Inicio | https://ejemplo.local/

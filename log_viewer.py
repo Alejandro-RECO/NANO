@@ -2,12 +2,13 @@
 """NANO - Visor de logs en consola en tiempo real.
 
 Vigila una carpeta, sigue (tail) el archivo .txt mas reciente y muestra
-las lineas nuevas con colores segun el nivel (INFO/WARN/ERROR/DEBUG),
-sin necesidad de abrir y cerrar el archivo para ver actualizaciones.
+las lineas nuevas coloreando el nivel y su mensaje (INFO/WARNING/DEBUG/ERROR),
+con la fecha siempre en blanco, sin necesidad de abrir y cerrar el archivo.
 """
 
 import argparse
 import os
+import re
 import sys
 import time
 from datetime import datetime
@@ -22,28 +23,40 @@ except ImportError:  # No Windows
 
 colorama_init(autoreset=True)
 
-# Palabra clave de nivel -> color. Orden importa (ERROR antes que ERR).
-NIVELES = [
-    ("ERROR", Fore.RED + Style.BRIGHT),
-    ("CRITICAL", Fore.RED + Style.BRIGHT),
-    ("FATAL", Fore.RED + Style.BRIGHT),
-    ("WARN", Fore.YELLOW + Style.BRIGHT),
-    ("WARNING", Fore.YELLOW + Style.BRIGHT),
-    ("INFO", Fore.GREEN),
-    ("DEBUG", Fore.CYAN + Style.DIM),
-    ("TRACE", Fore.CYAN + Style.DIM),
-]
+# Nivel -> color del nivel y su mensaje. Niveles ajustados al log real
+# (INFO / WARNING / DEBUG / ERROR). Se incluyen variantes equivalentes.
+COLORES_NIVEL = {
+    "ERROR": Fore.RED + Style.BRIGHT,
+    "CRITICAL": Fore.RED + Style.BRIGHT,
+    "FATAL": Fore.RED + Style.BRIGHT,
+    "WARNING": Fore.YELLOW + Style.BRIGHT,
+    "WARN": Fore.YELLOW + Style.BRIGHT,
+    "INFO": Fore.GREEN,
+    "DEBUG": Fore.CYAN + Style.DIM,
+    "TRACE": Fore.CYAN + Style.DIM,
+}
+
+# Fecha al inicio de la linea. Soporta DD/MM/YYYY (log real) y YYYY-MM-DD.
+FECHA_RE = re.compile(
+    r"^(\d{2}/\d{2}/\d{4} \d{2}:\d{2}:\d{2}|\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})"
+)
+# Nivel dentro del formato con barras:  | INFO |
+NIVEL_BARRA_RE = re.compile(r"\|\s*([A-Za-z]+)\s*\|")
 
 POLL_SEG = 0.3  # cada cuanto revisa cambios
 
 
-def color_para(linea):
-    """Devuelve el color ANSI segun el nivel detectado en la linea."""
-    upper = linea.upper()
-    for clave, color in NIVELES:
-        if clave in upper:
-            return color
-    return Fore.WHITE
+def detectar_nivel(resto):
+    """Detecta el nivel del log en el texto posterior a la fecha."""
+    # Formato real:  fecha | NIVEL | mensaje | ...
+    m = NIVEL_BARRA_RE.search(resto)
+    if m and m.group(1).upper() in COLORES_NIVEL:
+        return m.group(1).upper()
+    # Formato simple:  fecha NIVEL mensaje
+    m = re.match(r"\s*([A-Za-z]+)\b", resto)
+    if m and m.group(1).upper() in COLORES_NIVEL:
+        return m.group(1).upper()
+    return None
 
 
 def txt_mas_reciente(carpeta):
@@ -62,14 +75,39 @@ def txt_mas_reciente(carpeta):
 
 
 def formatear(linea, args):
-    """Aplica filtro, timestamp y color. Devuelve texto listo o None si se filtra."""
+    """Aplica filtro y color. Devuelve texto listo o None si se filtra.
+
+    Reglas de color:
+      - La fecha siempre se muestra en blanco.
+      - El nivel y su mensaje se pintan del color del nivel.
+      - Lineas sin nivel reconocido: todo en blanco.
+    """
     if args.filter and args.filter.upper() not in linea.upper():
         return None
-    texto = linea.rstrip("\n")
+
+    cruda = linea.rstrip("\n")
+
+    m_fecha = FECHA_RE.match(cruda)
+    if m_fecha:
+        fecha = m_fecha.group(1)
+        resto = cruda[m_fecha.end():]
+    else:
+        fecha = ""
+        resto = cruda
+
+    nivel = detectar_nivel(resto if fecha else cruda)
+    color = COLORES_NIVEL.get(nivel, Fore.WHITE)
+
+    partes = []
     if args.timestamp:
         ahora = datetime.now().strftime("%H:%M:%S")
-        texto = f"{Style.DIM}[{ahora}]{Style.RESET_ALL} {texto}"
-    return color_para(linea) + texto
+        partes.append(f"{Style.DIM}[{ahora}]{Style.RESET_ALL} ")
+    if fecha:
+        partes.append(Fore.WHITE + fecha)      # fecha siempre blanca
+        partes.append(color + resto)           # nivel + mensaje con color
+    else:
+        partes.append(color + resto)
+    return "".join(partes)
 
 
 def tecla_pausa():
