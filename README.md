@@ -4,17 +4,29 @@ Visor de **logs en consola en tiempo real** con colores. Vigila una carpeta,
 sigue (tail) el archivo `.txt` más reciente y muestra las líneas nuevas a
 medida que otros procesos las escriben — **sin abrir y cerrar el archivo**.
 
-La **fecha siempre se muestra en blanco**; el **nivel y su mensaje** se pintan
-del color del nivel. Formato soportado: `DD/MM/YYYY HH:MM:SS | NIVEL | mensaje | ...`
-(log real) y `YYYY-MM-DD HH:MM:SS NIVEL mensaje`.
+La **fecha se muestra en el color de fecha del tema**; el **nivel y su mensaje**
+se pintan del color del nivel. Formato soportado:
+`DD/MM/YYYY HH:MM:SS | NIVEL | mensaje | ...` (log real) y
+`YYYY-MM-DD HH:MM:SS NIVEL mensaje`.
 
-| Nivel                     | Color    |
-|---------------------------|----------|
-| `ERROR` / `CRITICAL` / `FATAL` | Rojo     |
-| `WARNING` / `WARN`        | Amarillo |
-| `INFO`                    | Verde    |
-| `DEBUG` / `TRACE`         | Cian     |
-| (sin nivel / fecha)       | Blanco   |
+Niveles reconocidos: `ERROR`/`CRITICAL`/`FATAL`, `WARNING`/`WARN`, `INFO`,
+`DEBUG`/`TRACE`. Las líneas sin nivel se muestran en el color de fecha.
+
+### Temas de color (color verdadero 24-bit)
+
+Al arrancar se elige el tema con un menú (Enter = **Neon**, por defecto).
+También se puede fijar sin menú con `--theme`:
+
+| Tema     | Estilo                              |
+|----------|-------------------------------------|
+| `neon`   | Colores neón vivos (por defecto)    |
+| `tokyo`  | Paleta Tokyo Night                  |
+| `pastel` | Tonos pastel suaves                 |
+
+```bash
+python log_viewer.py --theme tokyo     # salta el menu
+python log_viewer.py                    # pregunta el tema al arrancar
+```
 
 ## Requisitos
 
@@ -68,6 +80,7 @@ python log_viewer.py "C:\ruta\a\mis\logs"
 | `-t`, `--timestamp` | Antepone la hora a cada línea.                       |
 | `-s`, `--save A.txt`| Guarda también la salida mostrada en `A.txt`.        |
 | `--tail`            | Empieza al final del archivo (ignora lo ya escrito). |
+| `--theme T`         | Tema de color: `neon`, `tokyo` o `pastel` (sin menú). |
 
 En Windows, presiona **`p`** para pausar/reanudar y **`Ctrl+C`** para salir.
 
