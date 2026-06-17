@@ -2,6 +2,9 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+# Salidas temporales
+out.txt
+salida.txt
 # Logs reales (no subir), pero si el sample de prueba
 logs/*.txt
 !logs/sample.txt
