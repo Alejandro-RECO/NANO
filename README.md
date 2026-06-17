@@ -87,6 +87,7 @@ python log_viewer.py "C:\ruta\a\mis\logs"
 | `-s`, `--save A.txt`| Guarda también la salida mostrada en `A.txt`.        |
 | `--tail`            | Empieza al final del archivo (ignora lo ya escrito). |
 | `--theme T`         | Tema de color: `neon`, `tokyo` o `pastel` (sin menú). |
+| `--encoding E`      | Forzar encoding del log (ej: `cp1252`). Por defecto auto. |
 
 En Windows, presiona **`p`** para pausar/reanudar y **`Ctrl+C`** para salir.
 
@@ -99,6 +100,13 @@ python log_viewer.py logs -f ERROR -t
 # Seguir desde el final y guardar copia
 python log_viewer.py logs --tail -s salida.txt
 ```
+
+## Caracteres especiales (acentos, ñ)
+
+El visor **auto-detecta el encoding** de cada archivo: prueba UTF-8 (con o sin
+BOM) y, si falla, usa **cp1252** (típico en logs de Windows con acentos), así
+`ó`, `ñ`, `á`, etc. se ven bien. Se puede forzar con `--encoding`. La salida de
+consola se fuerza a UTF-8 para imprimir correctamente.
 
 ## Cómo funciona
 

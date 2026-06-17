@@ -9,6 +9,7 @@ con la fecha siempre en blanco, sin necesidad de abrir y cerrar el archivo.
 import argparse
 import os
 import re
+import sys
 import time
 from datetime import datetime
 
@@ -127,6 +128,25 @@ def txt_mas_reciente(carpeta):
     return max(archivos, key=os.path.getmtime)
 
 
+def detectar_encoding(ruta, forzado=None):
+    """Determina el encoding del archivo.
+
+    Si --encoding lo fuerza, se respeta. Si no: prueba UTF-8 (con o sin BOM)
+    y si falla usa cp1252 (Windows), comun en logs de Windows con acentos.
+    """
+    if forzado:
+        return forzado
+    try:
+        with open(ruta, "rb") as fh:
+            muestra = fh.read(65536)
+        if muestra.startswith(b"\xef\xbb\xbf"):
+            return "utf-8-sig"
+        muestra.decode("utf-8")
+        return "utf-8"
+    except (UnicodeDecodeError, OSError):
+        return "cp1252"
+
+
 def formatear(linea, args):
     """Aplica filtro y color. Devuelve texto listo o None si se filtra.
 
@@ -235,6 +255,7 @@ def seguir(args):
     banner(args.carpeta)
 
     actual = None      # ruta del archivo que estamos siguiendo
+    enc = "utf-8"      # encoding del archivo actual
     pos = 0            # ultima posicion leida (bytes)
     pausado = False
     salida = open(args.save, "a", encoding="utf-8") if args.save else None
@@ -259,7 +280,8 @@ def seguir(args):
             # Cambio a un archivo mas reciente.
             if nuevo != actual:
                 actual = nuevo
-                print(ansi(TEMA["acento"]) + f"\n>> Siguiendo: {os.path.basename(actual)}\n" + RESET)
+                enc = detectar_encoding(actual, args.encoding)
+                print(ansi(TEMA["acento"]) + f"\n>> Siguiendo: {os.path.basename(actual)} [{enc}]\n" + RESET)
                 # Empieza al final si --tail, sino desde el inicio.
                 pos = os.path.getsize(actual) if args.tail else 0
 
@@ -270,7 +292,7 @@ def seguir(args):
                 pos = 0
 
             if tam > pos:
-                with open(actual, "r", encoding="utf-8", errors="replace") as fh:
+                with open(actual, "r", encoding=enc, errors="replace") as fh:
                     fh.seek(pos)
                     for linea in fh:
                         salida_color = formatear(linea, args)
@@ -324,7 +346,18 @@ def main():
         choices=["neon", "tokyo", "pastel"],
         help="Tema de color. Si se omite, se elige al arrancar (default: neon).",
     )
+    parser.add_argument(
+        "--encoding",
+        help="Forzar encoding del log (ej: utf-8, cp1252). Por defecto auto-detecta.",
+    )
     args = parser.parse_args()
+
+    # Salida de consola en UTF-8 para mostrar acentos y ñ correctamente.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
     elegir_tema(args.theme)
     seguir(args)
 
