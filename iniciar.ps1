@@ -1,9 +1,10 @@
 # ============================================================
-#  NANO - Iniciador del visor de logs en tiempo real (PowerShell)
+#  NANO - Iniciador del visor / panel de control (PowerShell)
 #  Crea un entorno virtual local (.venv), instala dependencias
 #  y arranca el visor. Funciona en cualquier maquina con Python.
-#  Uso:  .\iniciar.ps1 [carpeta] [opciones de log_viewer.py]
-#  Ej.:  .\iniciar.ps1 logs -f ERROR -t
+#  Uso:  .\iniciar.ps1 [carpeta] [opciones]
+#  Ej.:  .\iniciar.ps1 logs -f ERROR
+#        .\iniciar.ps1 logs --simple
 # ============================================================
 $ErrorActionPreference = "Stop"
 Set-Location -Path $PSScriptRoot
@@ -34,20 +35,11 @@ if (-not (Test-Path $vpy)) {
     }
 }
 
-# 3) Instalar dependencias dentro del venv
-& $vpy -c "import colorama" 2>$null
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "[..] Instalando dependencias en .venv ..."
-    & $vpy -m pip install --upgrade pip | Out-Null
-    & $vpy -m pip install -r requirements.txt
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "[ERROR] Fallo la instalacion de dependencias." -ForegroundColor Red
-        exit 1
-    }
-}
-Write-Host "[OK] Dependencias listas." -ForegroundColor Green
+# 3) Instalar dependencias solo si requirements.txt cambio
+& $vpy (Join-Path $PSScriptRoot "scripts\preparar_entorno.py")
+if ($LASTEXITCODE -ne 0) { exit 1 }
 
 # 4) Lanzar visor (pasa todos los argumentos)
-Write-Host "[..] Arrancando visor... (Ctrl+C para salir)"
+Write-Host "[..] Arrancando visor... ('q' o Ctrl+C para salir)"
 Write-Host ""
-& $vpy log_viewer.py @args
+& $vpy -m nano @args

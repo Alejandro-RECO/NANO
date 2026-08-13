@@ -1,10 +1,11 @@
 @echo off
 REM ============================================================
-REM  NANO - Iniciador del visor de logs en tiempo real
+REM  NANO - Iniciador del visor / panel de control de logs
 REM  Crea un entorno virtual local (.venv), instala dependencias
 REM  y arranca el visor. Funciona en cualquier maquina con Python.
-REM  Uso:  iniciar.bat [carpeta] [opciones de log_viewer.py]
-REM  Ej.:  iniciar.bat logs -f ERROR -t
+REM  Uso:  iniciar.bat [carpeta] [opciones]
+REM  Ej.:  iniciar.bat logs -f ERROR
+REM        iniciar.bat logs --simple
 REM ============================================================
 setlocal
 cd /d "%~dp0"
@@ -40,23 +41,16 @@ if not exist ".venv\Scripts\python.exe" (
 )
 set "VPY=.venv\Scripts\python.exe"
 
-REM 3) Instalar dependencias dentro del venv
-"%VPY%" -c "import colorama" >nul 2>&1
+REM 3) Instalar dependencias solo si requirements.txt cambio
+"%VPY%" scripts\preparar_entorno.py
 if errorlevel 1 (
-    echo [..] Instalando dependencias en .venv ...
-    "%VPY%" -m pip install --upgrade pip >nul 2>&1
-    "%VPY%" -m pip install -r requirements.txt
-    if errorlevel 1 (
-        echo [ERROR] Fallo la instalacion de dependencias.
-        pause
-        exit /b 1
-    )
+    pause
+    exit /b 1
 )
-echo [OK] Dependencias listas.
 
 REM 4) Lanzar el visor (pasa todos los argumentos recibidos)
-echo [..] Arrancando visor... (Ctrl+C para salir)
+echo [..] Arrancando visor... ('q' o Ctrl+C para salir)
 echo(
-"%VPY%" log_viewer.py %*
+"%VPY%" -m nano %*
 
 endlocal

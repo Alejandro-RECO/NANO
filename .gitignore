@@ -2,6 +2,10 @@ __pycache__/
 *.pyc
 .venv/
 venv/
+# Empaquetado / herramientas
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
 # Salidas temporales
 out.txt
 salida.txt

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ============================================================
-#  NANO - Iniciador del visor de logs en tiempo real (Linux/Mac)
+#  NANO - Iniciador del visor / panel de control (Linux/Mac)
 #  Crea un entorno virtual local (.venv), instala dependencias
 #  y arranca el visor. Uso: ./iniciar.sh [carpeta] [opciones]
 # ============================================================
@@ -27,15 +27,10 @@ if [ ! -x ".venv/bin/python" ]; then
 fi
 VPY=".venv/bin/python"
 
-# 3) Instalar dependencias
-if ! "$VPY" -c "import colorama" >/dev/null 2>&1; then
-    echo "[..] Instalando dependencias en .venv ..."
-    "$VPY" -m pip install --upgrade pip >/dev/null 2>&1 || true
-    "$VPY" -m pip install -r requirements.txt
-fi
-echo "[OK] Dependencias listas."
+# 3) Instalar dependencias solo si requirements.txt cambio
+"$VPY" scripts/preparar_entorno.py
 
 # 4) Lanzar visor
-echo "[..] Arrancando visor... (Ctrl+C para salir)"
+echo "[..] Arrancando visor... ('q' o Ctrl+C para salir)"
 echo ""
-exec "$VPY" log_viewer.py "$@"
+exec "$VPY" -m nano "$@"
