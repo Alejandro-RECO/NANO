@@ -3,9 +3,9 @@
 Se usa como context manager. Si la salida no es una terminal interactiva,
 todo el objeto se comporta como un no-op que nunca devuelve teclas.
 
-Las teclas normales se devuelven en minuscula ("p", "q"). Las de navegacion
-se traducen a un nombre comun en las dos plataformas: "arriba", "abajo",
-"repag", "avpag", "inicio" y "fin".
+Las teclas normales se devuelven en minuscula ("p", "q"). Las demas se
+traducen a un nombre comun en las dos plataformas: "arriba", "abajo",
+"repag", "avpag", "inicio", "fin", "enter" y "esc".
 """
 
 from __future__ import annotations
@@ -38,6 +38,9 @@ ESPECIALES_POSIX = {
     "H": "inicio", "1~": "inicio",
     "F": "fin", "4~": "fin",
 }
+
+#: Teclas de control con el mismo nombre en las dos plataformas.
+CONTROLES = {"\r": "enter", "\n": "enter", "\x1b": "esc"}
 
 
 class Teclado:
@@ -94,9 +97,10 @@ class Teclado:
         if tecla in (b"\x00", b"\xe0"):  # prefijo de tecla especial
             return ESPECIALES_WIN.get(msvcrt.getch())
         try:
-            return tecla.decode("latin-1").lower()
+            caracter = tecla.decode("latin-1")
         except UnicodeDecodeError:
             return None
+        return CONTROLES.get(caracter, caracter.lower())
 
     def _leer_posix(self) -> str | None:
         if not self._hay_datos():
@@ -105,10 +109,13 @@ class Teclado:
         if not tecla:
             return None
         if tecla != "\x1b":
-            return tecla.lower()
+            return CONTROLES.get(tecla, tecla.lower())
 
+        # Escape a secas: nada mas en la cola de entrada.
+        if not self._hay_datos():
+            return "esc"
         # Secuencia de escape: "\x1b[" + cola (ej. "A", "5~").
-        if not self._hay_datos() or sys.stdin.read(1) != "[":
+        if sys.stdin.read(1) != "[":
             return None
         cola = ""
         while self._hay_datos() and len(cola) < 4:

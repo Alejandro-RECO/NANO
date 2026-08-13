@@ -4,8 +4,12 @@ No se arranca el bucle en vivo: se pinta el layout sobre una consola de
 prueba de tamano fijo y se comprueba el texto resultante.
 """
 
+import os
+import time
+
 import pytest
 
+from nano.core.catalogo import ArchivoFijo, PatronBot
 from nano.core.estado import EstadoSesion
 from nano.core.parser import parsear_linea
 from nano.core.seguidor import Seguidor
@@ -227,3 +231,129 @@ def test_tecla_desconocida_no_hace_nada(tmp_path):
     visor = con_muchas_lineas(tmp_path)
     visor._tecla_extra("z")
     assert visor.desplazamiento == 0
+
+
+# --- selector de archivo (tecla 'a') -----------------------------------------
+
+def crear_log(carpeta, nombre, edad_seg=0.0):
+    ruta = carpeta / nombre
+    ruta.write_text("x\n", encoding="utf-8")
+    if edad_seg:
+        cuando = time.time() - edad_seg
+        os.utime(ruta, (cuando, cuando))
+    return ruta
+
+
+@pytest.fixture
+def con_dos_bots(tmp_path):
+    """Carpeta compartida: el log de dos personas y nada mas."""
+    visor = construir(tmp_path, lineas=[linea("INFO", "algo"),
+                                        linea("ERROR", "un fallo")])
+    (tmp_path / "log.txt").unlink()   # el que crea construir()
+    crear_log(tmp_path, "Log_WPROFABRIC7RPA_CGRPA055_20260616.txt", edad_seg=30)
+    crear_log(tmp_path, "Log_WPROFABRIC6RPA_CGRPA070_20260616.txt")
+    return visor
+
+
+def test_la_tecla_a_abre_el_selector(con_dos_bots):
+    assert con_dos_bots._tecla_capturada("a") is True
+    assert con_dos_bots.selector is not None
+    salida = pintar(con_dos_bots)
+    assert "ELEGIR LOG" in salida
+    assert "WPROFABRIC6RPA" in salida and "WPROFABRIC7RPA" in salida
+    assert "ELIGIENDO LOG" in salida
+    assert "ACTIVO" in salida
+
+
+def test_sin_el_selector_abierto_las_teclas_pasan_de_largo(con_dos_bots):
+    assert con_dos_bots._tecla_capturada("q") is False
+    assert con_dos_bots._tecla_capturada("arriba") is False
+
+
+def test_con_el_selector_abierto_q_cancela_y_no_cierra(con_dos_bots):
+    con_dos_bots._tecla_capturada("a")
+    assert con_dos_bots._tecla_capturada("q") is True   # consumida
+    assert con_dos_bots.selector is None
+    assert "ELEGIR LOG" not in pintar(con_dos_bots)
+
+
+def test_esc_cancela_sin_cambiar_nada(con_dos_bots):
+    antes = con_dos_bots.seguidor.objetivo
+    con_dos_bots._tecla_capturada("a")
+    con_dos_bots._tecla_capturada("esc")
+    assert con_dos_bots.selector is None
+    assert con_dos_bots.seguidor.objetivo is antes
+
+
+def test_las_flechas_mueven_la_seleccion(con_dos_bots):
+    con_dos_bots._tecla_capturada("a")
+    assert con_dos_bots.selector.indice == 0
+    con_dos_bots._tecla_capturada("abajo")
+    assert con_dos_bots.selector.indice == 1
+    con_dos_bots._tecla_capturada("abajo")
+    assert con_dos_bots.selector.indice == 1      # no se pasa del final
+    con_dos_bots._tecla_capturada("arriba")
+    con_dos_bots._tecla_capturada("arriba")
+    assert con_dos_bots.selector.indice == 0      # ni del principio
+
+
+def test_enter_fija_el_archivo_elegido(con_dos_bots):
+    con_dos_bots._tecla_capturada("a")
+    con_dos_bots._tecla_capturada("abajo")
+    con_dos_bots._tecla_capturada("enter")
+
+    objetivo = con_dos_bots.seguidor.objetivo
+    assert isinstance(objetivo, ArchivoFijo)
+    assert objetivo.nombre == "Log_WPROFABRIC7RPA_CGRPA055_20260616.txt"
+    assert con_dos_bots.selector is None
+
+
+def test_la_tecla_b_sigue_al_bot(con_dos_bots):
+    con_dos_bots._tecla_capturada("a")
+    con_dos_bots._tecla_capturada("b")
+
+    objetivo = con_dos_bots.seguidor.objetivo
+    assert isinstance(objetivo, PatronBot)
+    assert objetivo.patron == "Log_WPROFABRIC6RPA_CGRPA070*"
+
+
+def test_cambiar_de_log_no_mezcla_los_contadores(con_dos_bots):
+    assert con_dos_bots.estado.errores == 1
+    con_dos_bots._tecla_capturada("a")
+    con_dos_bots._tecla_capturada("enter")
+
+    assert con_dos_bots.estado.errores == 0
+    assert con_dos_bots.estado.total == 0
+    assert con_dos_bots.estado.bot_actual is None
+    assert not con_dos_bots.estado.ultimos_errores
+    assert con_dos_bots.desplazamiento == 0
+    assert "Ahora sigue:" in pintar(con_dos_bots)
+
+
+def test_el_objetivo_se_ve_en_la_cabecera(con_dos_bots):
+    assert "mas reciente" in pintar(con_dos_bots)
+    con_dos_bots._tecla_capturada("a")
+    con_dos_bots._tecla_capturada("b")
+    assert "bot WPROFABRIC6RPA CGRPA070" in pintar(con_dos_bots)
+
+
+def test_selector_con_carpeta_vacia(tmp_path):
+    visor = construir(tmp_path)
+    (tmp_path / "log.txt").unlink()
+    visor._tecla_capturada("a")
+    salida = pintar(visor)
+    assert "no hay ningun .txt" in salida
+    visor._tecla_capturada("enter")          # no debe romper
+    assert visor.selector is None
+
+
+def test_selector_con_muchos_archivos_desplaza_la_ventana(tmp_path):
+    for i in range(40):
+        crear_log(tmp_path, f"Log_BOT{i:02d}_PROC_2026061{i % 10}.txt",
+                  edad_seg=i * 10)
+    visor = construir(tmp_path)
+    visor._tecla_capturada("a")
+    visor._tecla_capturada("fin")
+    salida = pintar(visor)
+    assert visor.selector.indice == len(visor.selector.disponibles) - 1
+    assert len(salida.splitlines()) <= ALTO       # no desborda el layout

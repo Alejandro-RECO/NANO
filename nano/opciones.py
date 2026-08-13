@@ -12,6 +12,9 @@ class Opciones:
     """Configuracion de una ejecucion concreta del visor."""
 
     carpeta: str = "logs"
+    archivo: str | None = None
+    bot: str | None = None
+    elegir: bool = False
     filtro: str | None = None
     con_hora: bool = False
     guardar: str | None = None

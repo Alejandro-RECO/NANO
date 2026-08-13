@@ -1,10 +1,11 @@
-"""Seguimiento incremental del archivo de log mas reciente de una carpeta."""
+"""Seguimiento incremental del archivo de log elegido dentro de una carpeta."""
 
 from __future__ import annotations
 
 import codecs
 import os
 
+from nano.core.catalogo import MasReciente, Objetivo
 from nano.core.encoding import detectar_encoding
 
 #: Lecturas seguidas sin datos nuevos tras las que se da por cerrada una
@@ -14,25 +15,15 @@ _TICKS_PARA_CERRAR_RESTO = 2
 
 def txt_mas_reciente(carpeta: str | os.PathLike[str]) -> str | None:
     """Ruta del .txt modificado mas recientemente en la carpeta, o None."""
-    try:
-        archivos = [
-            os.path.join(carpeta, f)
-            for f in os.listdir(carpeta)
-            if f.lower().endswith(".txt")
-        ]
-    except OSError:
-        return None
-    if not archivos:
-        return None
-    try:
-        return max(archivos, key=os.path.getmtime)
-    except OSError:
-        # Algun archivo desaparecio entre el listado y el stat.
-        return None
+    return MasReciente().resolver(carpeta)
 
 
 class Seguidor:
-    """Sigue (tail) el .txt mas reciente de una carpeta.
+    """Sigue (tail) un .txt de una carpeta.
+
+    Que archivo se sigue lo decide el `objetivo` en cada lectura: el mas
+    reciente (por defecto, como siempre), uno fijo, o el mas reciente de un
+    bot concreto. Ver `nano.core.catalogo`.
 
     Trabaja en binario con desplazamientos de bytes reales y un decodificador
     incremental, de modo que:
@@ -46,10 +37,12 @@ class Seguidor:
 
     def __init__(self, carpeta: str | os.PathLike[str], *,
                  desde_el_final: bool = False,
-                 encoding_forzado: str | None = None) -> None:
+                 encoding_forzado: str | None = None,
+                 objetivo: Objetivo | None = None) -> None:
         self.carpeta = carpeta
         self.desde_el_final = desde_el_final
         self.encoding_forzado = encoding_forzado
+        self.objetivo: Objetivo = objetivo or MasReciente()
 
         self.archivo: str | None = None
         self.encoding: str = "utf-8"
@@ -81,6 +74,17 @@ class Seguidor:
         valor, self._rotado = self._rotado, False
         return valor
 
+    @property
+    def descripcion_objetivo(self) -> str:
+        """Que se esta siguiendo, en texto corto para la cabecera."""
+        return self.objetivo.descripcion
+
+    def cambiar_objetivo(self, objetivo: Objetivo) -> None:
+        """Pasa a seguir otro archivo, empezando su lectura desde cero."""
+        self.objetivo = objetivo
+        self.archivo = None
+        self._reiniciar_lectura()
+
     # --- lectura -------------------------------------------------------------
 
     def leer_nuevas(self) -> list[str]:
@@ -90,7 +94,7 @@ class Seguidor:
         siempre actualizada, aunque quien la consume deje de recorrerla.
         Si la carpeta no tiene ningun .txt, devuelve una lista vacia.
         """
-        nuevo = txt_mas_reciente(self.carpeta)
+        nuevo = self.objetivo.resolver(self.carpeta)
         if nuevo is None:
             return []
 

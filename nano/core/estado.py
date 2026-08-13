@@ -121,7 +121,18 @@ class EstadoSesion:
         self.sin_nivel = 0
         self.primera_ts = None
         self.ultima_ts = None
+        self.ultima_recepcion = None
         self.inicio_sesion = time.monotonic()
+
+    def reiniciar_todo(self) -> None:
+        """Como `limpiar`, pero olvidando tambien el bot y la HU.
+
+        Se usa al cambiar de archivo: el contexto del log anterior es de otro
+        proceso y mezclarlo haria que los paneles mintieran.
+        """
+        self.limpiar()
+        self.bot_actual = None
+        self.origen_actual = None
 
     # --- consultas -----------------------------------------------------------
 

@@ -53,10 +53,79 @@ Al salir se imprime un **resumen final** en el flujo normal de la consola, con
 totales, periodo cubierto, ranking y la lista de errores — queda en el historial
 aunque el panel desaparezca.
 
+## Elegir qué log seguir
+
+Cuando **varias personas monitorean sus bots contra la misma carpeta**, cada
+una escribe su propio `.txt`. Por defecto NANO sigue el archivo modificado más
+recientemente, así que en cuanto el bot de un compañero escribe una línea, el
+visor salta a su log y abandona el tuyo.
+
+Por eso, **si hay más de un `.txt` en la carpeta**, al arrancar aparece un menú:
+
+```
+=== NANO - Elige el log a seguir ===
+
+      BOT             PROCESO   ARCHIVO
+   1) WPROFABRIC6RPA  CGRPA070  Log_WPROFABRIC6RPA_CGRPA070_20260616.txt  ACTIVO (Enter)
+   2) WPROFABRIC7RPA  CGRPA055  Log_WPROFABRIC7RPA_CGRPA055_20260616.txt  ACTIVO
+   3) WPROADMIN2RPA   CGRPA112  Log_WPROADMIN2RPA_CGRPA112_20260615.txt
+   4) WPROFABRIC6RPA  CGRPA070  Log_WPROFABRIC6RPA_CGRPA070_20260615.txt
+
+  numero       seguir ese archivo exacto
+  numero + b   seguir a ese bot (el mas reciente que coincida)
+  Enter        el mas reciente
+```
+
+`ACTIVO` marca los logs escritos en los últimos 2 minutos: distingue de un
+vistazo el bot que está corriendo de los que quedaron de ayer. Con un solo
+`.txt` en la carpeta no pregunta nada y arranca directo, como siempre.
+
+### Las dos formas de elegir
+
+| Escribes | Sigue | Cuándo usarla |
+|---|---|---|
+| `1` | **Ese archivo exacto**, pase lo que pase. | Revisar una corrida concreta, incluso de días pasados. |
+| `1b` | **A ese bot**: el más reciente que case con `Log_WPROFABRIC6RPA_CGRPA070_*`. | Monitoreo diario — mañana engancha solo el log nuevo de *tu* bot. |
+| `Enter` | El más reciente de la carpeta. | Comportamiento de siempre, cuando la carpeta es solo tuya. |
+
+El patrón del bot se deduce quitando del nombre los tramos finales que son
+fecha o correlativo (`_20260616`, `_2`). Lo que se esté siguiendo se muestra
+siempre en la cabecera del panel, junto al nombre del archivo.
+
+### Sin pasar por el menú
+
+```bash
+python -m nano logs --archivo Log_WPROFABRIC6RPA_CGRPA070_20260616.txt
+python -m nano logs --archivo "Log_WPROFABRIC6RPA_*"   # con comodines = patron
+python -m nano logs --bot WPROFABRIC6RPA               # el mas reciente de ese bot
+python -m nano logs --elegir                           # fuerza el menu
+```
+
+`--bot` es lo más práctico para un acceso directo fijo: siempre engancha tu log
+del día sin tocar los de los demás.
+
+### Cambiar de log sin reiniciar
+
+La tecla **`a`** abre el mismo selector dentro del panel, sin salir de la
+pantalla:
+
+```
+╭─ ELEGIR LOG   ↑↓ mover  ·  Enter archivo  ·  B bot  ·  Esc cancelar ────────────╮
+│   WPROFABRIC6RPA     CGRPA070    Log_WPROFABRIC6RPA_CGRPA070_20260616.txt ACTIVO │
+│ ▸ WPROFABRIC7RPA     CGRPA055    Log_WPROFABRIC7RPA_CGRPA055_20260616.txt ACTIVO │
+│   WPROFABRIC6RPA     CGRPA070    Log_WPROFABRIC6RPA_CGRPA070_20260615.txt        │
+╰──────────────────────────────────────────────────────────────────────────────────╯
+```
+
+Al confirmar se **reinician contadores, historiales y stream**: si no, los
+paneles mezclarían dos procesos distintos y el resumen dejaría de significar
+nada.
+
 ### Teclas
 
 | Tecla | Acción |
 |-------|--------|
+| `a` | Abre el selector para cambiar de log. |
 | `↑` `↓` | Sube o baja una línea por el historial del log. |
 | `RePág` `AvPág` | Sube o baja una pantalla completa. |
 | `Inicio` | Va al principio de lo que hay en memoria. |
@@ -146,6 +215,9 @@ python -m nano logs -f ERROR          # el stream solo muestra lineas con ERROR
 
 | Opción | Descripción |
 |--------|-------------|
+| `-a`, `--archivo N` | Sigue ese archivo y no otro. Admite comodines. Salta el menú. |
+| `--bot X` | Sigue el log más reciente cuyo nombre contenga `X`. Salta el menú. |
+| `--elegir` | Muestra el menú de selección aunque solo haya un archivo. |
 | `-f`, `--filter X` | El stream solo muestra líneas que contengan `X`. **No afecta a los contadores**: el panel sigue reflejando el log completo. |
 | `-t`, `--timestamp` | Antepone la hora de lectura a cada línea (solo en modo simple). |
 | `-s`, `--save A.txt` | Guarda también la salida mostrada en `A.txt`. |
@@ -169,11 +241,12 @@ nano/
 │   ├── modelo.py    LogRecord: una linea ya interpretada
 │   ├── parser.py    parseo de los dos formatos de log
 │   ├── encoding.py  deteccion de UTF-8 / BOM / cp1252
+│   ├── catalogo.py  que logs hay y cual seguir (archivo fijo / bot / reciente)
 │   ├── seguidor.py  tail incremental, rotacion, lineas partidas
 │   └── estado.py    contadores, historiales, ritmo, top de errores
 ├── ui/
 │   ├── temas.py     paletas de color y su equivalente para rich
-│   ├── menu.py      seleccion de tema al arrancar
+│   ├── menu.py      seleccion de tema y de log al arrancar
 │   ├── teclado.py   lectura de teclas sin bloquear (Windows y POSIX)
 │   ├── base.py      bucle comun a los dos modos
 │   ├── simple.py    stream plano
@@ -206,7 +279,8 @@ leen **solo los bytes nuevos** (en binario, con decodificador incremental).
 Detecta:
 
 - **Rotación / truncado**: si el archivo encoge, reinicia desde el principio.
-- **Archivo nuevo**: si aparece un `.txt` más reciente, cambia a seguirlo.
+- **Archivo nuevo**: si aparece un `.txt` más reciente, cambia a seguirlo —
+  salvo que hayas fijado un archivo o un bot, en cuyo caso se queda en el tuyo.
 - **Línea a medio escribir**: si el bot aún no terminó la línea, se espera a que
   la complete en vez de mostrarla partida en dos.
 
@@ -225,4 +299,7 @@ python -m nano logs
 
 # consola B
 python scripts/simular_log.py logs --ritmo 5 --errores 20
+
+# Y para reproducir la carpeta compartida entre varias personas:
+python scripts/simular_log.py logs --bots WPROFABRIC6RPA,WPROFABRIC7RPA
 ```

@@ -79,6 +79,10 @@ class VisorBase:
         """Aplica la tecla pulsada. Devuelve True si hay que salir."""
         if tecla is None:
             return False
+        # Un dialogo abierto se queda con la tecla: si no, 'q' cerraria NANO
+        # mientras el usuario intenta navegar por el.
+        if self._tecla_capturada(tecla):
+            return False
         if tecla in TECLA_SALIR:
             return True
         if tecla in TECLA_PAUSA:
@@ -130,6 +134,10 @@ class VisorBase:
 
     def _tecla_extra(self, tecla: str) -> None:
         """Teclas que no son salir/pausa/limpiar (navegacion del panel)."""
+
+    def _tecla_capturada(self, tecla: str) -> bool:
+        """True si un dialogo abierto consumio la tecla antes que el resto."""
+        return False
 
     def _aviso_archivo(self) -> None:
         """Avisa de que se empezo a seguir otro archivo."""

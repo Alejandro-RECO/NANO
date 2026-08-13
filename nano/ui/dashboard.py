@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from typing import ContextManager
 
 from rich import box
-from rich.console import Console
+from rich.console import Console, Group
 from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
@@ -28,6 +28,7 @@ from rich.table import Table
 from rich.text import Text
 
 from nano import config
+from nano.core.catalogo import LogDisponible, listar_logs, objetivo_de_log
 from nano.core.estado import EstadoSesion, Entrada
 from nano.core.modelo import LogRecord
 from nano.core.seguidor import Seguidor
@@ -48,6 +49,38 @@ ANCHO_HORA = 8
 ANCHO_NIVEL = 7
 ANCHO_ORIGEN = 20
 
+#: Anchos de las columnas del selector de archivo.
+ANCHO_BOT = 18
+ANCHO_PROCESO = 11
+ANCHO_ACTIVO = 6
+
+
+class SelectorArchivo:
+    """Dialogo abierto sobre el stream para cambiar de log sin salir."""
+
+    def __init__(self, disponibles: list[LogDisponible]) -> None:
+        self.disponibles = disponibles
+        self.indice = 0
+
+    def mover(self, pasos: int) -> None:
+        if not self.disponibles:
+            return
+        self.indice = max(0, min(len(self.disponibles) - 1,
+                                 self.indice + pasos))
+
+    def actual(self) -> LogDisponible | None:
+        if not self.disponibles:
+            return None
+        return self.disponibles[self.indice]
+
+    def ventana(self, alto: int) -> tuple[list[LogDisponible], int]:
+        """Filas que caben, centradas en la seleccion, y su desplazamiento."""
+        if len(self.disponibles) <= alto:
+            return self.disponibles, 0
+        inicio = max(0, min(len(self.disponibles) - alto,
+                            self.indice - alto // 2))
+        return self.disponibles[inicio:inicio + alto], inicio
+
 
 @dataclass(frozen=True)
 class Aviso:
@@ -67,6 +100,8 @@ class VisorDashboard(VisorBase):
         self._live: Live | None = None
         #: Lineas que el usuario ha subido desde el final. 0 = pegado al vivo.
         self.desplazamiento = 0
+        #: Dialogo de cambio de log, mientras esta abierto.
+        self.selector: SelectorArchivo | None = None
 
         modo_ascii = opciones.ascii or self.console.legacy_windows
         self.simbolos = SIMBOLOS[bool(modo_ascii)]
@@ -107,6 +142,54 @@ class VisorDashboard(VisorBase):
         # cada linea nueva empuja el final, asi que se compensa el desfase.
         if self.desplazamiento:
             self._desplazar(1)
+
+    # --- cambio de archivo sin salir -----------------------------------------
+
+    def _tecla_capturada(self, tecla: str) -> bool:
+        """Con el selector abierto, todas las teclas son suyas."""
+        if self.selector is None:
+            if tecla != "a":
+                return False
+            self.selector = SelectorArchivo(listar_logs(self.opciones.carpeta))
+            self._refrescar()
+            return True
+
+        if tecla == "arriba":
+            self.selector.mover(-1)
+        elif tecla == "abajo":
+            self.selector.mover(1)
+        elif tecla == "repag":
+            self.selector.mover(-self._alto_stream())
+        elif tecla == "avpag":
+            self.selector.mover(self._alto_stream())
+        elif tecla == "inicio":
+            self.selector.mover(-len(self.selector.disponibles))
+        elif tecla == "fin":
+            self.selector.mover(len(self.selector.disponibles))
+        elif tecla == "enter":
+            self._aplicar_seleccion(por_bot=False)
+        elif tecla == "b":
+            self._aplicar_seleccion(por_bot=True)
+        elif tecla in ("esc", "a", "q"):
+            self.selector = None
+        self._refrescar()
+        return True
+
+    def _aplicar_seleccion(self, *, por_bot: bool) -> None:
+        """Cambia de log y deja el panel limpio para el nuevo proceso."""
+        log = self.selector.actual() if self.selector else None
+        self.selector = None
+        if log is None:
+            return
+
+        objetivo = objetivo_de_log(log, por_bot)
+        self.seguidor.cambiar_objetivo(objetivo)
+        # Los contadores y los paneles eran de otro bot: mezclarlos haria que
+        # el resumen dejara de significar nada.
+        self.estado.reiniciar_todo()
+        self.filas.clear()
+        self.desplazamiento = 0
+        self._avisar(f"Ahora sigue: {objetivo.resumen}")
 
     # --- navegacion por el historial -----------------------------------------
 
@@ -189,18 +272,16 @@ class VisorDashboard(VisorBase):
         sep, flecha = self.simbolos["sep"], self.simbolos["flecha"]
         estado, tema = self.estado, self.tema
 
-        rejilla = Table.grid(expand=True)
-        rejilla.add_column(justify="left", ratio=1, no_wrap=True,
-                           overflow="ellipsis")
-        rejilla.add_column(justify="right", no_wrap=True)
-
         archivo = Text(self.seguidor.nombre_archivo or "esperando archivo...",
                        style=f"bold {BLANCO_HEX}")
         archivo.append(f"  {sep}  {self.seguidor.encoding}",
                        style=tema.estilo_fecha)
+        # Que se esta siguiendo: en una carpeta compartida es la diferencia
+        # entre ver tu log y ver el del companero.
+        archivo.append(f"  {sep}  {self.seguidor.descripcion_objetivo}",
+                       style=tema.estilo_acento)
         bot = Text("BOT ", style=tema.estilo_fecha)
         bot.append(estado.bot_actual or "-", style=f"bold {tema.estilo_acento}")
-        rejilla.add_row(archivo, bot)
 
         origen = Text("HU  ", style=tema.estilo_fecha)
         origen.append(_ultimo_segmento(estado.origen_actual) or "-",
@@ -212,15 +293,62 @@ class VisorDashboard(VisorBase):
                           style=tema.estilo_fecha)
         ultima = estado.ultima_ts.strftime("%H:%M:%S") if estado.ultima_ts else "--:--:--"
         marcadores.append(f"  {sep}  ult {ultima}", style=tema.estilo_fecha)
-        rejilla.add_row(origen, marcadores)
 
-        return Panel(rejilla, box=self.caja, title="[b]NANO[/b]",
+        # Dos rejillas y no una de dos filas: si compartieran columnas, el
+        # ancho de la fila de abajo recortaria el nombre del archivo.
+        return Panel(Group(_fila(archivo, bot), _fila(origen, marcadores)),
+                     box=self.caja, title="[b]NANO[/b]",
                      title_align="left", border_style=tema.estilo_acento,
                      padding=(0, 1))
 
     # --- stream --------------------------------------------------------------
 
     def _stream(self) -> Panel:
+        if self.selector is not None:
+            return self._panel_selector()
+        return self._panel_log()
+
+    def _panel_selector(self) -> Panel:
+        """Dialogo de eleccion de log, en la misma zona que el stream.
+
+        Ocupa el sitio del log en vez de abrir otra pantalla, asi el resto
+        del panel (contadores, errores) sigue a la vista mientras se elige.
+        """
+        tema, sel = self.tema, self.selector
+        tabla = Table.grid(expand=True, padding=(0, 1))
+        tabla.add_column(width=1, no_wrap=True)                      # cursor
+        tabla.add_column(width=ANCHO_BOT, no_wrap=True, overflow="ellipsis")
+        tabla.add_column(width=ANCHO_PROCESO, no_wrap=True, overflow="ellipsis")
+        tabla.add_column(ratio=1, no_wrap=True, overflow="ellipsis")  # archivo
+        tabla.add_column(width=ANCHO_ACTIVO, no_wrap=True)            # ACTIVO
+
+        visibles, inicio = sel.ventana(self._alto_stream())
+        if not visibles:
+            tabla.add_row("", "", "",
+                          Text(f"{self.simbolos['vacio']} no hay ningun .txt "
+                               "en la carpeta", style=tema.estilo_fecha), "")
+        for i, log in enumerate(visibles, inicio):
+            elegido = i == sel.indice
+            estilo = f"bold {tema.estilo_acento}" if elegido else tema.estilo_fecha
+            tabla.add_row(
+                Text(self.simbolos["flecha"] if elegido else "",
+                     style=tema.estilo_acento),
+                Text(log.bot, style=estilo),
+                Text(log.proceso, style=estilo),
+                Text(log.nombre, style=f"bold {BLANCO_HEX}" if elegido
+                     else BLANCO_HEX),
+                Text("ACTIVO" if log.activo else "",
+                     style=tema.estilo("INFO")),
+            )
+
+        titulo = (f"ELEGIR LOG   {self.simbolos['arriba']}{self.simbolos['abajo']}"
+                  f" mover  {self.simbolos['sep']}  Enter archivo  "
+                  f"{self.simbolos['sep']}  B bot  {self.simbolos['sep']}  "
+                  "Esc cancelar")
+        return Panel(tabla, box=self.caja, title=titulo, title_align="left",
+                     border_style=tema.estilo_acento, padding=(0, 1))
+
+    def _panel_log(self) -> Panel:
         tabla = Table.grid(expand=True, padding=(0, 1))
         tabla.add_column(width=ANCHO_HORA, no_wrap=True)                # hora
         tabla.add_column(width=ANCHO_NIVEL, no_wrap=True)               # nivel
@@ -359,7 +487,8 @@ class VisorDashboard(VisorBase):
         rejilla.add_column(justify="right", no_wrap=True)
 
         teclas = Text(no_wrap=True, overflow="ellipsis")
-        for tecla, accion in (("p", "pausa"), ("c", "limpiar"), ("q", "salir")):
+        for tecla, accion in (("p", "pausa"), ("a", "archivo"),
+                              ("c", "limpiar"), ("q", "salir")):
             teclas.append(f" {tecla} ", style=f"reverse {tema.estilo_acento}")
             teclas.append(f" {accion}   ", style=tema.estilo_fecha)
         teclas.append(f"  {self.simbolos['arriba']}{self.simbolos['abajo']} "
@@ -371,6 +500,9 @@ class VisorDashboard(VisorBase):
 
     def _estado_sesion(self) -> Text:
         punto = self.simbolos["punto"]
+        if self.selector is not None:
+            return Text(f"ELIGIENDO LOG {punto}",
+                        style=f"bold {self.tema.estilo_acento}")
         if self.en_historial:
             return Text(f"HISTORIAL {self.simbolos['arriba']}{self.desplazamiento} "
                         f"{punto}", style=f"bold {self.tema.estilo_acento}")
@@ -383,6 +515,16 @@ class VisorDashboard(VisorBase):
                         style=f"bold {self.tema.estilo_fuerte('ERROR')}")
         return Text(f"EN VIVO {punto}",
                     style=f"bold {self.tema.estilo_fuerte('INFO')}")
+
+
+def _fila(izquierda: Text, derecha: Text) -> Table:
+    """Una linea con un texto pegado a cada margen."""
+    rejilla = Table.grid(expand=True)
+    rejilla.add_column(justify="left", ratio=1, no_wrap=True,
+                       overflow="ellipsis")
+    rejilla.add_column(justify="right", no_wrap=True)
+    rejilla.add_row(izquierda, derecha)
+    return rejilla
 
 
 def _ultimo_segmento(ruta: str | None) -> str:

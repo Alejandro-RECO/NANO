@@ -11,7 +11,7 @@ from nano import __version__, config
 from nano.core.estado import EstadoSesion
 from nano.core.seguidor import Seguidor
 from nano.opciones import Opciones
-from nano.ui.menu import elegir_tema
+from nano.ui.menu import elegir_archivo, elegir_tema
 from nano.ui.resumen import imprimir_resumen
 from nano.ui.temas import ORDEN_TEMAS, RESET
 
@@ -25,6 +25,21 @@ def construir_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "carpeta", nargs="?", default="logs",
         help="Carpeta a vigilar (default: ./logs). Sigue el .txt mas reciente.",
+    )
+    parser.add_argument(
+        "-a", "--archivo",
+        help="Sigue este archivo y no otro (util si varias personas comparten "
+             "la carpeta). Admite comodines: 'Log_WPROFABRIC6RPA_*'. "
+             "Salta el menu de seleccion.",
+    )
+    parser.add_argument(
+        "--bot",
+        help="Sigue el log mas reciente cuyo nombre contenga este texto "
+             "(ej: --bot WPROFABRIC6RPA). Salta el menu de seleccion.",
+    )
+    parser.add_argument(
+        "--elegir", action="store_true",
+        help="Muestra el menu de seleccion de log aunque solo haya un archivo.",
     )
     parser.add_argument(
         "-f", "--filter", dest="filtro",
@@ -76,6 +91,9 @@ def opciones_desde_args(args: argparse.Namespace) -> Opciones:
     """Convierte los argumentos ya parseados en un objeto Opciones."""
     return Opciones(
         carpeta=args.carpeta,
+        archivo=args.archivo,
+        bot=args.bot,
+        elegir=args.elegir,
         filtro=args.filtro,
         con_hora=args.timestamp,
         guardar=args.guardar,
@@ -127,10 +145,17 @@ def main(argv: list[str] | None = None) -> int:
         pass
 
     tema = elegir_tema(args.tema)
+    objetivo = elegir_archivo(
+        opciones.carpeta, tema,
+        archivo=opciones.archivo,
+        bot=opciones.bot,
+        forzar=opciones.elegir,
+    )
     seguidor = Seguidor(
         opciones.carpeta,
         desde_el_final=opciones.desde_el_final,
         encoding_forzado=opciones.encoding,
+        objetivo=objetivo,
     )
     estado = EstadoSesion(max_historial=opciones.max_errores)
 

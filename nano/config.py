@@ -31,6 +31,10 @@ MAX_MENSAJE_TOP: int = 80
 #: Segundos sin lineas nuevas tras los que el proceso se considera "inactivo".
 UMBRAL_INACTIVO: float = 120.0
 
+#: Segundos desde la ultima escritura por debajo de los cuales un archivo se
+#: marca como ACTIVO en el menu de seleccion de log.
+UMBRAL_ACTIVO: float = 120.0
+
 # --- Panel de control --------------------------------------------------------
 
 #: Lineas que guarda el buffer del stream (se muestran solo las que quepan).
