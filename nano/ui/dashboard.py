@@ -37,8 +37,10 @@ from nano.ui.temas import BLANCO_HEX, Tema
 
 #: Simbolos con alternativa ASCII para consolas que no dibujan Unicode.
 SIMBOLOS = {
-    False: {"sep": "·", "flecha": "▸", "punto": "●", "vacio": "—", "veces": "×"},
-    True: {"sep": "-", "flecha": ">", "punto": "*", "vacio": "-", "veces": "x"},
+    False: {"sep": "·", "flecha": "▸", "punto": "●", "vacio": "—", "veces": "×",
+            "arriba": "↑", "abajo": "↓"},
+    True: {"sep": "-", "flecha": ">", "punto": "*", "vacio": "-", "veces": "x",
+           "arriba": "^", "abajo": "v"},
 }
 
 #: Anchos fijos de las columnas del stream.
@@ -63,6 +65,8 @@ class VisorDashboard(VisorBase):
         self.console = Console()
         self.filas: deque = deque(maxlen=config.BUFFER_STREAM)
         self._live: Live | None = None
+        #: Lineas que el usuario ha subido desde el final. 0 = pegado al vivo.
+        self.desplazamiento = 0
 
         modo_ascii = opciones.ascii or self.console.legacy_windows
         self.simbolos = SIMBOLOS[bool(modo_ascii)]
@@ -71,21 +75,68 @@ class VisorDashboard(VisorBase):
     # --- integracion con el bucle base ---------------------------------------
 
     def _contexto(self) -> ContextManager:
+        # auto_refresh=False: el panel se redibuja desde el bucle principal y
+        # no desde un hilo de fondo de rich. Asi el dibujado no compite con
+        # nada mas por la consola, que es lo que hacia aparecer el cursor
+        # moviendose por la pantalla entre redibujados.
         self._live = Live(
             self._render(),
             console=self.console,
-            refresh_per_second=config.REFRESCO_PANEL,
+            auto_refresh=False,
             screen=True,
             transient=False,
         )
         return self._live
 
-    def _mostrar(self, rec: LogRecord) -> None:
-        self.filas.append(rec)
+    def _al_iniciar(self) -> None:
+        # rich ya lo hace al abrir el Live, pero se repite aqui para las
+        # consolas donde esa primera secuencia se pierde y el cursor se queda
+        # parpadeando encima del panel.
+        self.console.show_cursor(False)
+
+    def _al_terminar(self) -> None:
+        self.console.show_cursor(True)
 
     def _refrescar(self) -> None:
         if self._live is not None:
-            self._live.update(self._render())
+            self._live.update(self._render(), refresh=True)
+
+    def _mostrar(self, rec: LogRecord) -> None:
+        self.filas.append(rec)
+        # Si el usuario esta mirando hacia atras, la vista no debe saltar:
+        # cada linea nueva empuja el final, asi que se compensa el desfase.
+        if self.desplazamiento:
+            self._desplazar(1)
+
+    # --- navegacion por el historial -----------------------------------------
+
+    def _tecla_extra(self, tecla: str) -> None:
+        salto = max(1, self._alto_stream() - 1)
+        if tecla == "arriba":
+            self._desplazar(1)
+        elif tecla == "abajo":
+            self._desplazar(-1)
+        elif tecla == "repag":
+            self._desplazar(salto)
+        elif tecla == "avpag":
+            self._desplazar(-salto)
+        elif tecla == "inicio":
+            self._desplazar(len(self.filas))
+        elif tecla == "fin":
+            self.desplazamiento = 0
+        else:
+            return
+        self._refrescar()
+
+    def _desplazar(self, lineas: int) -> None:
+        """Mueve la vista dentro del buffer, sin salirse de sus limites."""
+        tope = max(0, len(self.filas) - self._alto_stream())
+        self.desplazamiento = max(0, min(tope, self.desplazamiento + lineas))
+
+    @property
+    def en_historial(self) -> bool:
+        """True si la vista esta detenida mas arriba del final del log."""
+        return self.desplazamiento > 0
 
     def _aviso_archivo(self) -> None:
         self._avisar(f"Siguiendo: {self.seguidor.nombre_archivo} "
@@ -188,8 +239,14 @@ class VisorDashboard(VisorBase):
                 continue
             tabla.add_row(*self._celdas(fila))
 
-        return Panel(tabla, box=self.caja, border_style=self.tema.estilo_fecha,
-                     padding=(0, 1))
+        if not self.en_historial:
+            return Panel(tabla, box=self.caja,
+                         border_style=self.tema.estilo_fecha, padding=(0, 1))
+
+        titulo = (f"HISTORIAL  {self.simbolos['arriba']} {self.desplazamiento} "
+                  f"lineas atras  {self.simbolos['sep']}  [Fin] volver al vivo")
+        return Panel(tabla, box=self.caja, title=titulo, title_align="left",
+                     border_style=self.tema.estilo_acento, padding=(0, 1))
 
     def _celdas(self, rec: LogRecord) -> tuple:
         tema = self.tema
@@ -202,13 +259,19 @@ class VisorDashboard(VisorBase):
             Text(rec.origen_corto, style=tema.estilo(rec.nivel)),
         )
 
-    def _filas_visibles(self) -> list:
-        """Ultimas filas que caben en la zona de stream."""
+    def _alto_stream(self) -> int:
+        """Cuantas lineas de log caben en la zona de stream."""
         fijo = (config.ALTO_CABECERA + config.ALTO_PANELES
                 + config.ALTO_TOP + config.ALTO_BARRA)
         disponible = self.console.size.height - fijo - 2  # 2 = bordes del panel
-        cuantas = max(config.MIN_ALTO_STREAM, disponible)
-        return list(self.filas)[-cuantas:]
+        return max(config.MIN_ALTO_STREAM, disponible)
+
+    def _filas_visibles(self) -> list:
+        """Ventana de filas a mostrar, segun el desplazamiento actual."""
+        cuantas = self._alto_stream()
+        fin = len(self.filas) - self.desplazamiento
+        inicio = max(0, fin - cuantas)
+        return list(self.filas)[inicio:fin]
 
     # --- paneles inferiores --------------------------------------------------
 
@@ -295,16 +358,22 @@ class VisorDashboard(VisorBase):
         rejilla.add_column(justify="left", no_wrap=True)
         rejilla.add_column(justify="right", no_wrap=True)
 
-        teclas = Text()
+        teclas = Text(no_wrap=True, overflow="ellipsis")
         for tecla, accion in (("p", "pausa"), ("c", "limpiar"), ("q", "salir")):
             teclas.append(f" {tecla} ", style=f"reverse {tema.estilo_acento}")
             teclas.append(f" {accion}   ", style=tema.estilo_fecha)
+        teclas.append(f"  {self.simbolos['arriba']}{self.simbolos['abajo']} "
+                      "RePag AvPag Inicio Fin ", style=tema.estilo_acento)
+        teclas.append("historial", style=tema.estilo_fecha)
 
         rejilla.add_row(teclas, self._estado_sesion())
         return rejilla
 
     def _estado_sesion(self) -> Text:
         punto = self.simbolos["punto"]
+        if self.en_historial:
+            return Text(f"HISTORIAL {self.simbolos['arriba']}{self.desplazamiento} "
+                        f"{punto}", style=f"bold {self.tema.estilo_acento}")
         if self.pausado:
             return Text(f"PAUSADO {punto}",
                         style=f"bold {self.tema.estilo_fuerte('WARNING')}")

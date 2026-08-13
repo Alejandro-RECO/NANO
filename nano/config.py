@@ -36,8 +36,8 @@ UMBRAL_INACTIVO: float = 120.0
 #: Lineas que guarda el buffer del stream (se muestran solo las que quepan).
 BUFFER_STREAM: int = 1000
 
-#: Redibujados por segundo del panel.
-REFRESCO_PANEL: int = 4
+#: El panel se redibuja desde el bucle principal, no desde un hilo de rich:
+#: la cadencia real es una vez por vuelta, es decir cada POLL_SEG segundos.
 
 #: Alturas fijas (en filas) de cada zona del layout, bordes incluidos.
 ALTO_CABECERA: int = 4

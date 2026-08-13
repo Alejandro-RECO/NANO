@@ -2,6 +2,10 @@
 
 Se usa como context manager. Si la salida no es una terminal interactiva,
 todo el objeto se comporta como un no-op que nunca devuelve teclas.
+
+Las teclas normales se devuelven en minuscula ("p", "q"). Las de navegacion
+se traducen a un nombre comun en las dos plataformas: "arriba", "abajo",
+"repag", "avpag", "inicio" y "fin".
 """
 
 from __future__ import annotations
@@ -20,6 +24,21 @@ try:  # POSIX
 except ImportError:  # Windows
     termios = tty = select = None
 
+#: Segundo byte que manda msvcrt tras el prefijo \x00 o \xe0.
+ESPECIALES_WIN = {
+    b"H": "arriba", b"P": "abajo",
+    b"I": "repag", b"Q": "avpag",
+    b"G": "inicio", b"O": "fin",
+}
+
+#: Cola de la secuencia ANSI que manda una terminal POSIX tras "\x1b[".
+ESPECIALES_POSIX = {
+    "A": "arriba", "B": "abajo",
+    "5~": "repag", "6~": "avpag",
+    "H": "inicio", "1~": "inicio",
+    "F": "fin", "4~": "fin",
+}
+
 
 class Teclado:
     """Devuelve la ultima tecla pulsada, o None si no hay ninguna."""
@@ -37,8 +56,14 @@ class Teclado:
     def __enter__(self) -> "Teclado":
         if self.activo and termios is not None:
             try:
-                self._ajustes = termios.tcgetattr(sys.stdin.fileno())
-                tty.setcbreak(sys.stdin.fileno())
+                fd = sys.stdin.fileno()
+                self._ajustes = termios.tcgetattr(fd)
+                tty.setcbreak(fd)
+                # setcbreak deja el eco encendido: sin esto, cada tecla
+                # pulsada se imprimiria encima del panel.
+                modo = termios.tcgetattr(fd)
+                modo[3] &= ~termios.ECHO
+                termios.tcsetattr(fd, termios.TCSADRAIN, modo)
             except (termios.error, ValueError):
                 self.activo = False
         return self
@@ -53,7 +78,7 @@ class Teclado:
             self._ajustes = None
 
     def leer(self) -> str | None:
-        """Tecla pulsada en minuscula, o None. No bloquea nunca."""
+        """Tecla pulsada, o None si no hay ninguna. No bloquea nunca."""
         if not self.activo:
             return None
         if msvcrt is not None:
@@ -66,20 +91,37 @@ class Teclado:
         if not msvcrt.kbhit():
             return None
         tecla = msvcrt.getch()
-        if tecla in (b"\x00", b"\xe0"):  # teclas especiales: descartar el par
-            msvcrt.getch()
-            return None
+        if tecla in (b"\x00", b"\xe0"):  # prefijo de tecla especial
+            return ESPECIALES_WIN.get(msvcrt.getch())
         try:
             return tecla.decode("latin-1").lower()
         except UnicodeDecodeError:
             return None
 
     def _leer_posix(self) -> str | None:
+        if not self._hay_datos():
+            return None
+        tecla = sys.stdin.read(1)
+        if not tecla:
+            return None
+        if tecla != "\x1b":
+            return tecla.lower()
+
+        # Secuencia de escape: "\x1b[" + cola (ej. "A", "5~").
+        if not self._hay_datos() or sys.stdin.read(1) != "[":
+            return None
+        cola = ""
+        while self._hay_datos() and len(cola) < 4:
+            caracter = sys.stdin.read(1)
+            cola += caracter
+            if caracter.isalpha() or caracter == "~":
+                break
+        return ESPECIALES_POSIX.get(cola)
+
+    @staticmethod
+    def _hay_datos() -> bool:
         try:
             listas, _, _ = select.select([sys.stdin], [], [], 0)
         except (OSError, ValueError):
-            return None
-        if not listas:
-            return None
-        tecla = sys.stdin.read(1)
-        return tecla.lower() if tecla else None
+            return False
+        return bool(listas)

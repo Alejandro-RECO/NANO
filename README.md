@@ -57,9 +57,23 @@ aunque el panel desaparezca.
 
 | Tecla | Acción |
 |-------|--------|
-| `p` | Pausa / reanuda el avance del stream. |
+| `↑` `↓` | Sube o baja una línea por el historial del log. |
+| `RePág` `AvPág` | Sube o baja una pantalla completa. |
+| `Inicio` | Va al principio de lo que hay en memoria. |
+| `Fin` | Vuelve al vivo, pegado a la última línea. |
+| `p` | Pausa / reanuda la lectura del archivo. |
 | `c` | Reinicia contadores e historiales. |
 | `q` | Sale (equivale a `Ctrl+C`). |
+
+Al navegar hacia atrás el panel entra en **modo historial**: el borde del
+stream cambia de color y el título indica cuántas líneas atrás estás. La vista
+queda anclada — **las líneas que van llegando no te mueven de sitio** — pero el
+log se sigue leyendo y los contadores y paneles siguen actualizándose. `Fin`
+devuelve al vivo.
+
+El buffer guarda las últimas **1000 líneas** (`BUFFER_STREAM` en
+[config.py](nano/config.py)). Para revisar más atrás, el archivo de log
+completo siempre está ahí.
 
 ## Formato de log soportado
 

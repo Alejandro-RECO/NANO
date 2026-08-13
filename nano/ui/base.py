@@ -87,6 +87,8 @@ class VisorBase:
         elif tecla in TECLA_LIMPIAR:
             self.estado.limpiar()
             self._aviso_limpieza()
+        else:
+            self._tecla_extra(tecla)
         return False
 
     def _procesar(self, linea: str) -> None:
@@ -125,6 +127,9 @@ class VisorBase:
 
     def _refrescar(self) -> None:
         """Se llama en cada vuelta del bucle, haya lineas nuevas o no."""
+
+    def _tecla_extra(self, tecla: str) -> None:
+        """Teclas que no son salir/pausa/limpiar (navegacion del panel)."""
 
     def _aviso_archivo(self) -> None:
         """Avisa de que se empezo a seguir otro archivo."""

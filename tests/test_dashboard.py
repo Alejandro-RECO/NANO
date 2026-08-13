@@ -130,3 +130,100 @@ def test_terminal_muy_baja_sigue_pintando(tmp_path):
                             color_system="truecolor", record=True)
     salida = pintar(visor)
     assert "RESUMEN" in salida
+
+
+# --- navegacion por el historial --------------------------------------------
+
+def con_muchas_lineas(tmp_path, cuantas=200):
+    return construir(tmp_path,
+                     lineas=[linea("INFO", f"linea {i}") for i in range(cuantas)])
+
+
+def test_al_inicio_la_vista_esta_pegada_al_vivo(tmp_path):
+    visor = con_muchas_lineas(tmp_path)
+    assert visor.desplazamiento == 0
+    assert visor.en_historial is False
+    salida = pintar(visor)
+    assert "linea 199" in salida
+    assert "HISTORIAL" not in salida
+
+
+def test_flecha_arriba_sube_una_linea(tmp_path):
+    visor = con_muchas_lineas(tmp_path)
+    visor._tecla_extra("arriba")
+    assert visor.desplazamiento == 1
+    salida = pintar(visor)
+    assert "linea 198" in salida
+    assert "linea 199" not in salida
+    assert "HISTORIAL" in salida
+
+
+def test_repag_salta_una_pantalla_y_avpag_vuelve(tmp_path):
+    visor = con_muchas_lineas(tmp_path)
+    alto = visor._alto_stream()
+    visor._tecla_extra("repag")
+    assert visor.desplazamiento == alto - 1
+    visor._tecla_extra("avpag")
+    assert visor.desplazamiento == 0
+
+
+def test_inicio_va_al_principio_del_buffer(tmp_path):
+    visor = con_muchas_lineas(tmp_path)
+    visor._tecla_extra("inicio")
+    salida = pintar(visor)
+    assert "linea 0" in salida
+    assert visor.desplazamiento == 200 - visor._alto_stream()
+
+
+def test_fin_vuelve_al_vivo(tmp_path):
+    visor = con_muchas_lineas(tmp_path)
+    visor._tecla_extra("inicio")
+    visor._tecla_extra("fin")
+    assert visor.desplazamiento == 0
+    assert "linea 199" in pintar(visor)
+
+
+def test_no_se_puede_pasar_de_los_limites(tmp_path):
+    visor = con_muchas_lineas(tmp_path, cuantas=5)
+    for _ in range(50):
+        visor._tecla_extra("arriba")
+    assert visor.desplazamiento == 0      # caben las 5: no hay nada arriba
+    visor = con_muchas_lineas(tmp_path)
+    for _ in range(500):
+        visor._tecla_extra("arriba")
+    assert visor.desplazamiento == 200 - visor._alto_stream()
+    for _ in range(500):
+        visor._tecla_extra("abajo")
+    assert visor.desplazamiento == 0
+
+
+def test_las_lineas_nuevas_no_mueven_la_vista(tmp_path):
+    visor = con_muchas_lineas(tmp_path)
+    visor._tecla_extra("arriba")
+    visible_antes = pintar(visor)
+    for i in range(5):
+        rec = parsear_linea(linea("INFO", f"recien llegada {i}"))
+        visor.estado.registrar(rec)
+        visor._mostrar(rec)
+    assert visor.desplazamiento == 6      # 1 + las 5 lineas nuevas
+    assert "linea 198" in visible_antes
+    assert "linea 198" in pintar(visor)   # sigue viendose lo mismo
+    assert "recien llegada" not in pintar(visor)
+
+
+def test_el_log_sigue_contando_mientras_se_navega(tmp_path):
+    visor = con_muchas_lineas(tmp_path)
+    visor._tecla_extra("inicio")
+    rec = parsear_linea(linea("ERROR", "fallo mientras miro atras"))
+    visor.estado.registrar(rec)
+    visor._mostrar(rec)
+    salida = pintar(visor)
+    assert visor.estado.errores == 1
+    assert "fallo mientras miro atras" in salida   # en el panel de errores
+    assert "linea 0" in salida                     # la vista no se movio
+
+
+def test_tecla_desconocida_no_hace_nada(tmp_path):
+    visor = con_muchas_lineas(tmp_path)
+    visor._tecla_extra("z")
+    assert visor.desplazamiento == 0
